@@ -111,7 +111,7 @@ const status = document.querySelector('#status');
 const search = document.querySelector('#search');
 const returnRateValue = document.querySelector('#return-rate');
 const refresh = document.querySelector('#refresh');
-// Radio groups: RadioNodeList.value is the checked radio's value.
+// Checkbox groups share a name, so namedItem returns a list of their boxes.
 const filters = document.querySelector('#filters').elements;
 // Market data server: Americas.
 const SERVER = 'west';
@@ -128,8 +128,29 @@ const RETURN_RATES = {
 };
 let lastRender = [[], false, new Map()];
 
+// Checkbox groups: every checked value, e.g. ['Lymhurst', 'Martlock'].
+function checked(group) {
+  return Array.from(group).filter(box => box.checked).map(box => box.value);
+}
+
 function returnRate() {
   return RETURN_RATES[focus.checked ? 'yes' : 'no'][bonusDay.value][bonusCity.checked ? 1 : 0];
+}
+
+// Merge records for one item across the selected cities/qualities: each side is the average of the
+// prices that exist, dated by the newest observation, with a count of how many prices went in.
+function averageRecords(records) {
+  const merged = new Map();
+  for (const record of records) {
+    const entry = merged.get(record.item_id) || merged.set(record.item_id, { item_id: record.item_id, buy: [], sell: [] }).get(record.item_id);
+    if (record.buy_price_max > 0) entry.buy.push([record.buy_price_max, record.buy_price_max_date]);
+    if (record.sell_price_min > 0) entry.sell.push([record.sell_price_min, record.sell_price_min_date]);
+  }
+  const side = prices => prices.length ? { price: Math.round(prices.reduce((sum, [price]) => sum + price, 0) / prices.length), date: prices.map(([, date]) => date).sort().at(-1), count: prices.length } : { price: 0, date: null, count: 0 };
+  return new Map([...merged.values()].map(({ item_id, buy, sell }) => {
+    const b = side(buy), s = side(sell);
+    return [item_id, { item_id, buy_price_max: b.price, buy_price_max_date: b.date, buy_count: b.count, sell_price_min: s.price, sell_price_min_date: s.date, sell_count: s.count }];
+  }));
 }
 let activeRequest;
 const BLACK_MARKET = 'Black Market';
@@ -151,11 +172,12 @@ function priceCell(record, side, loading, className = side) {
   cell.append(value);
   const age = document.createElement('span');
   age.className = 'age';
+  const count = record?.[side === 'buy' ? 'buy_count' : 'sell_count'] || 0;
   if (amount > 0 && date) {
     const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
-    age.textContent = minutes < 1 ? 'Just observed' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`;
+    age.textContent = (count > 1 ? `Avg. of ${count} · ` : '') + (minutes < 1 ? 'Just observed' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`);
     age.classList.toggle('stale', minutes >= 1440);
-    age.title = `Observed ${date.toLocaleString()}`;
+    age.title = count > 1 ? `Average of ${count} prices; newest observed ${date.toLocaleString()}` : `Observed ${date.toLocaleString()}`;
   } else {
     age.textContent = loading ? 'Loading…' : amount > 0 ? 'Observation time unknown' : '';
   }
@@ -218,12 +240,11 @@ function enchantCell(variant, enchantPrices, loading) {
   return cell;
 }
 
-function render(records = [], loading = false, materialPrices = new Map(), enchantPrices = new Map(), artifactPrices = new Map()) {
-  lastRender = [records, loading, materialPrices, enchantPrices, artifactPrices];
+function render(market = { indexed: new Map(), blackMarket: new Map() }, loading = false, materialPrices = new Map(), enchantPrices = new Map(), artifactPrices = new Map()) {
+  lastRender = [market, loading, materialPrices, enchantPrices, artifactPrices];
   const rate = returnRate();
   returnRateValue.textContent = `${rate}%`;
-  const indexed = new Map(records.filter(record => record.city !== BLACK_MARKET).map(record => [record.item_id, record]));
-  const blackMarket = new Map(records.filter(record => record.city === BLACK_MARKET).map(record => [record.item_id, record]));
+  const { indexed, blackMarket } = market;
   // Hide the Artifact column for items whose recipe has no artifact.
   rows.closest('table').classList.toggle('no-artifact', !variants.some(variant => variant.artifact));
   rows.replaceChildren(...variants.map(variant => {
@@ -245,15 +266,15 @@ async function loadPrices() {
   rows.setAttribute('aria-busy', 'true');
   status.className = '';
   status.textContent = '';
-  render([], true);
-  const location = city.value;
-  const selectedQuality = Number(quality.value);
+  render(undefined, true);
+  const locations = checked(city);
+  const qualities = checked(quality).map(Number);
   try {
     const ids = variants.map(variant => encodeURIComponent(variant.id)).join(',');
-    const params = new URLSearchParams({ locations: `${location},${BLACK_MARKET}`, qualities: String(selectedQuality) });
+    const params = new URLSearchParams({ locations: [...locations, BLACK_MARKET].join(','), qualities: qualities.join(',') });
     const materialIds = variants.flatMap(variant => [...variant.materials, variant.artifact, variant.enchant].filter(Boolean).map(material => encodeURIComponent(material.id))).join(',');
     // Enchanting stones are priced as an average across all cities, so fetch every city for this request.
-    const cities = Array.from(city, radio => radio.value);
+    const cities = Array.from(city, box => box.value);
     // Royal Cities: excludes Caerleon and Brecilien.
     const royalCities = ['Bridgewatch', 'Fort Sterling', 'Lymhurst', 'Martlock', 'Thetford'];
     const materialParams = new URLSearchParams({ locations: cities.join(','), qualities: '1' });
@@ -267,8 +288,12 @@ async function loadPrices() {
     const [data, materialData, historyData = []] = await Promise.all([response.json(), materialResponse.json(), artifactHistory?.json()]);
     if (!Array.isArray(data) || !Array.isArray(materialData) || !Array.isArray(historyData)) throw new Error('Unexpected market response. Please try again.');
     if (activeRequest !== controller) return;
-    const records = data.filter(record => (record.city === location || record.city === BLACK_MARKET) && Number(record.quality) === selectedQuality);
-    const materialPrices = new Map(materialData.filter(record => record.city === location).map(record => [record.item_id, record]));
+    const records = data.filter(record => qualities.includes(Number(record.quality)));
+    const market = {
+      indexed: averageRecords(records.filter(record => locations.includes(record.city))),
+      blackMarket: averageRecords(records.filter(record => record.city === BLACK_MARKET))
+    };
+    const materialPrices = averageRecords(materialData.filter(record => locations.includes(record.city)));
     const enchantPrices = new Map();
     for (const { enchant } of variants) {
       if (!enchant) continue;
@@ -284,7 +309,7 @@ async function loadPrices() {
       const dates = days.map(day => day.timestamp.slice(0, 10)).sort();
       artifactPrices.set(id, { price: Math.round(days.reduce((sum, day) => sum + day.avg_price * day.item_count, 0) / sold), sold, from: dates[0], to: dates.at(-1) });
     }
-    render(records, false, materialPrices, enchantPrices, artifactPrices);
+    render(market, false, materialPrices, enchantPrices, artifactPrices);
   } catch (error) {
     if (activeRequest !== controller) return;
     render();
@@ -309,7 +334,11 @@ function showItem() {
   document.title = `${item.name} prices · Albion market`;
 }
 
-[city, quality].forEach(group => group.forEach(radio => radio.addEventListener('change', loadPrices)));
+// Each checkbox group needs at least one box checked.
+[city, quality].forEach(group => group.forEach(box => box.addEventListener('change', () => {
+  if (!checked(group).length) box.checked = true;
+})));
+[city, quality].forEach(group => group.forEach(box => box.addEventListener('change', loadPrices)));
 // Search bar: a combobox over ITEMS; choosing a result switches the page to that item.
 const searchResults = document.querySelector('#search-results');
 let activeResult = -1;
