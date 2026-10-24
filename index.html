@@ -9,6 +9,7 @@
   <script src="items.js" defer></script>
   <script src="market.js" defer></script>
   <script src="table.js" defer></script>
+  <script src="columns.js" defer></script>
   <script src="app.js" defer></script>
 </head>
 <body>
@@ -23,7 +24,7 @@
         <div class="item-art"><img src="https://render.albiononline.com/v1/item/T4_BAG.png?quality=1&amp;size=217" width="140" height="140" alt="Bag in Albion Online"></div>
         <h1 id="item-name">Bag</h1>
       </section>
-      <div class="table-actions"><button id="refresh" class="icon-button" type="submit" form="filters" aria-label="Refresh" data-tooltip="Refresh"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button></div>
+      <div class="table-actions"><button id="refresh" class="icon-button" type="submit" form="filters" aria-label="Refresh" data-tooltip="Refresh"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button><div class="filter-wrap"><button id="column-filter" class="icon-button" type="button" aria-label="Filter" data-tooltip="Filter" aria-haspopup="true" aria-expanded="false" aria-controls="column-menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 5h18l-7 8v6l-4 2v-8z"/></svg></button><div id="column-menu" class="column-menu" hidden><fieldset class="check-group"><legend>Hide columns</legend></fieldset></div></div></div>
       <section class="market" aria-label="Market prices">
         <form id="filters" class="sidebar">
           <div class="return-rate"><span>Resource return rate</span><output id="return-rate" for="focus bonus-day bonus-city">15.3%</output></div>
@@ -34,7 +35,9 @@
           <label class="toggle"><input id="bonus-city" type="checkbox" role="switch"><span>Bonus city</span></label>
           <span id="status" role="status" aria-live="polite"></span>
         </form>
-        <div class="table-wrap"><table><thead><tr><th scope="col">Tier and enchantment</th><th scope="col">Buy order <span>Highest offer</span></th><th scope="col">Sell order <span>Lowest ask</span></th><th scope="col">Black market <span>Highest offer</span></th><th scope="col">Materials <span>Cost after return</span></th><th scope="col" class="artifact">Artifact <span>Avg. sale price</span></th><th scope="col">Enchanting <span>Royal City average</span></th></tr></thead><tbody id="prices"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Tier and enchantment</th><th scope="col" data-col="buy">Buy order <span>Highest offer</span></th><th scope="col" data-col="sell">Sell order <span>Lowest ask</span></th><th scope="col" data-col="black">Black market <span>Highest offer</span></th><th scope="col" data-col="materials">Materials <span>Cost after return</span></th><th scope="col" class="artifact" data-col="artifact">Artifact <span>Avg. sale price</span></th><th scope="col" data-col="enchant">Enchanting <span>Royal City average</span></th><th scope="col" data-col="volume">Sales <span>Last 14 days</span></th></tr></thead><tbody id="prices"></tbody></table></div>
+        <p id="drag-help" class="visually-hidden">To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again to drop the item in its new position, or press escape to cancel.</p>
+        <div id="drag-announcer" class="visually-hidden" aria-live="assertive"></div>
       </section>
       <aside class="data-note"><span aria-hidden="true">ⓘ</span><p>Prices are collected by players on the Americas server, so some may be out of date or missing. Buy and sell orders are before fees. Materials are priced in the selected city, minus your resource return rate. Artifacts use their recent average sale price, and enchanting uses the Royal City average.</p></aside>
     </main>

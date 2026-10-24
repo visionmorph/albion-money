@@ -7,16 +7,19 @@ function observation(date) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function priceCell(record, side, loading, className = side) {
+// estimate (optional): recent average sale price, shown when there's no current order.
+function priceCell(record, side, loading, className = side, estimate = null) {
   const cell = document.createElement('td');
   cell.className = className;
-  const amount = record?.[side === 'buy' ? 'buy_price_max' : 'sell_price_min'];
+  const live = record?.[side === 'buy' ? 'buy_price_max' : 'sell_price_min'];
+  const fallback = !(live > 0) && estimate;
+  const amount = fallback ? estimate.price : live;
   const date = observation(record?.[side === 'buy' ? 'buy_price_max_date' : 'sell_price_min_date']);
   const value = document.createElement('span');
-  value.className = `price${amount > 0 ? '' : ' missing'}`;
+  value.className = `price${amount > 0 ? '' : ' missing'}${fallback ? ' estimate' : ''}`;
   value.textContent = amount > 0 ? formatter.format(amount) : '—';
   // Buy and sell orders get a dot per city their price came from.
-  const sources = className === side && amount > 0 ? record[`${side}_cities`] || [] : [];
+  const sources = className === side && amount > 0 ? (fallback ? estimate.cities : record[`${side}_cities`]) || [] : [];
   if (sources.length) {
     const dots = document.createElement('span');
     dots.className = 'city-dots';
@@ -33,7 +36,11 @@ function priceCell(record, side, loading, className = side) {
   const age = document.createElement('span');
   age.className = 'age';
   const count = record?.[side === 'buy' ? 'buy_count' : 'sell_count'] || 0;
-  if (amount > 0 && date) {
+  if (fallback) {
+    const days = Math.max(0, Math.floor((Date.now() - new Date(`${estimate.newest}Z`)) / 864e5));
+    age.textContent = `Avg. sale · ${days ? `${days}d ago` : 'today'}`;
+    age.title = `No current order. Estimated from ${formatter.format(estimate.sold)} sale${estimate.sold === 1 ? '' : 's'} in the last ${ESTIMATE_DAYS} days; newest ${new Date(`${estimate.newest}Z`).toLocaleDateString()}`;
+  } else if (amount > 0 && date) {
     const minutes = Math.max(0, Math.floor((Date.now() - date.getTime()) / 60000));
     age.textContent = (count > 1 ? `Avg. of ${count} · ` : '') + (minutes < 1 ? 'Just observed' : minutes < 60 ? `${minutes}m ago` : minutes < 1440 ? `${Math.floor(minutes / 60)}h ago` : `${Math.floor(minutes / 1440)}d ago`);
     age.classList.toggle('stale', minutes >= 1440);
@@ -52,7 +59,9 @@ function materialCell(variant, materialPrices, loading, rate) {
   const complete = costs.every(cost => cost > 0);
   const value = document.createElement('span');
   value.className = `price${complete ? '' : ' missing'}`;
-  value.textContent = complete ? formatter.format(Math.round(costs.reduce((sum, cost) => sum + cost, 0) * (1 - rate / 100))) : '—';
+  // The return rate only reduces raw resources; ingredients that are never returned count in full.
+  const total = costs.reduce((sum, cost, index) => sum + (variant.materials[index].noReturn ? cost : cost * (1 - rate / 100)), 0);
+  value.textContent = complete ? formatter.format(Math.round(total)) : '—';
   const detail = document.createElement('span');
   detail.className = 'age';
   detail.textContent = complete ? variant.materials.map(material => `${material.count} ${material.name}`).join(' + ') : '';
@@ -100,6 +109,38 @@ function enchantCell(variant, enchantPrices, loading) {
   return cell;
 }
 
+// Sales column: one bar per day for the last 14 days, height = items sold that day (scaled to the row's busiest day).
+function volumeCell(days, loading) {
+  const cell = document.createElement('td');
+  cell.className = 'volume';
+  const total = days ? days.reduce((sum, day) => sum + day.sold, 0) : 0;
+  const chart = document.createElement('span');
+  chart.className = 'sparkline';
+  if (total) {
+    const max = Math.max(...days.map(day => day.sold));
+    chart.setAttribute('role', 'img');
+    chart.setAttribute('aria-label', `${formatter.format(total)} sold over the last ${days.length} days`);
+    chart.append(...days.map(day => {
+      // The bar's hit area is the full chart height; the visible bar inside is the volume.
+      const slot = document.createElement('span');
+      const date = new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: 'short', day: 'numeric', timeZone: 'UTC' });
+      slot.dataset.tip = day.sold ? `${date} · ${formatter.format(day.sold)} sold · avg ${formatter.format(day.price)}` : `${date} · no sales`;
+      const bar = document.createElement('i');
+      bar.style.height = day.sold ? `${Math.max(12, Math.round(day.sold / max * 100))}%` : '';
+      slot.append(bar);
+      return slot;
+    }));
+  } else {
+    chart.classList.add('missing');
+    chart.textContent = '—';
+  }
+  const detail = document.createElement('span');
+  detail.className = 'age';
+  detail.textContent = total ? `${formatter.format(total)} sold` : loading ? 'Loading…' : '';
+  cell.append(chart, detail);
+  return cell;
+}
+
 function render(market = { indexed: new Map(), blackMarket: new Map() }, loading = false, materialPrices = new Map(), enchantPrices = new Map(), artifactPrices = new Map()) {
   lastRender = [market, loading, materialPrices, enchantPrices, artifactPrices];
   const rate = returnRate();
@@ -112,7 +153,17 @@ function render(market = { indexed: new Map(), blackMarket: new Map() }, loading
     if (!variant.enchantment && variant.tier > 4) row.className = 'tier-start';
     const label = document.createElement('td');
     label.innerHTML = `<span class="variant"><span class="tier-icon tier-${variant.tier}" aria-hidden="true">${['IV', 'V', 'VI', 'VII', 'VIII'][variant.tier - 4]}</span>${variant.tier}.${variant.enchantment}</span>`;
-    row.append(label, priceCell(indexed.get(variant.id), 'buy', loading), priceCell(indexed.get(variant.id), 'sell', loading), priceCell(blackMarket.get(variant.id), 'buy', loading, 'black'), materialCell(variant, materialPrices, loading, rate), artifactCell(variant, artifactPrices, loading), enchantCell(variant, enchantPrices, loading));
+    const cells = {
+      buy: priceCell(indexed.get(variant.id), 'buy', loading, 'buy', market.estimates?.get(variant.id)),
+      sell: priceCell(indexed.get(variant.id), 'sell', loading, 'sell', market.estimates?.get(variant.id)),
+      black: priceCell(blackMarket.get(variant.id), 'buy', loading, 'black'),
+      materials: materialCell(variant, materialPrices, loading, rate),
+      artifact: artifactCell(variant, artifactPrices, loading),
+      enchant: enchantCell(variant, enchantPrices, loading),
+      volume: volumeCell(market.volume?.get(variant.id), loading)
+    };
+    // columnOrder comes from columns.js, so cells follow the user's column order.
+    row.append(label, ...columnOrder.map(key => cells[key]));
     return row;
   }));
 }

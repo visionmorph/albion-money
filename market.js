@@ -4,6 +4,8 @@ const SERVER = 'west';
 const BLACK_MARKET = 'Black Market';
 // Royal Cities: excludes Caerleon and Brecilien.
 const ROYAL_CITIES = ['Bridgewatch', 'Fort Sterling', 'Lymhurst', 'Martlock', 'Thetford'];
+// Buy/sell cells with no current order fall back to the average sale price from this many recent days.
+const ESTIMATE_DAYS = 14;
 // Resource return rate (%) by focus, then bonus day (0/10/20), then [normal city, bonus city].
 const RETURN_RATES = {
   no: { 0: [15.3, 24.8], 10: [21.9, 30.1], 20: [27.5, 34.6] },
@@ -45,13 +47,17 @@ async function fetchMarket(variants, locations, qualities, cities, signal) {
   const materialIds = variants.flatMap(variant => [...variant.materials, variant.artifact, variant.enchant].filter(Boolean).map(material => encodeURIComponent(material.id))).join(',');
   const materialParams = new URLSearchParams({ locations: cities.join(','), qualities: '1' });
   const artifactIds = variants.map(variant => variant.artifact?.id).filter((id, index, ids) => id && ids.indexOf(id) === index);
-  const [response, materialResponse, artifactHistory] = await Promise.all([
+  const historyParams = new URLSearchParams({ locations: locations.join(','), qualities: qualities.join(','), 'time-scale': '24' });
+  const [response, materialResponse, artifactHistory, itemHistory] = await Promise.all([
     fetch(`https://${SERVER}.albion-online-data.com/api/v2/stats/prices/${ids}.json?${params}`, { signal }),
     fetch(`https://${SERVER}.albion-online-data.com/api/v2/stats/prices/${materialIds}.json?${materialParams}`, { signal }),
-    artifactIds.length ? fetch(`https://${SERVER}.albion-online-data.com/api/v2/stats/history/${artifactIds.map(encodeURIComponent).join(',')}.json?time-scale=24&qualities=1`, { signal }) : null
+    artifactIds.length ? fetch(`https://${SERVER}.albion-online-data.com/api/v2/stats/history/${artifactIds.map(encodeURIComponent).join(',')}.json?time-scale=24&qualities=1`, { signal }) : null,
+    fetch(`https://${SERVER}.albion-online-data.com/api/v2/stats/history/${ids}.json?${historyParams}`, { signal })
   ]);
   for (const result of [response, materialResponse, artifactHistory].filter(Boolean)) if (!result.ok) throw new Error(result.status === 429 ? 'Too many requests. Please wait a moment and refresh.' : `Market service returned ${result.status}. Please try again.`);
-  const [data, materialData, historyData = []] = await Promise.all([response.json(), materialResponse.json(), artifactHistory?.json()]);
+  const [data, materialData, historyData = [], itemHistoryData] = await Promise.all([response.json(), materialResponse.json(), artifactHistory?.json(),
+    // Estimates are optional: if the history request fails, live prices still show.
+    itemHistory.ok ? itemHistory.json().catch(() => []) : []]);
   if (!Array.isArray(data) || !Array.isArray(materialData) || !Array.isArray(historyData)) throw new Error('Unexpected market response. Please try again.');
   const records = data.filter(record => qualities.includes(Number(record.quality)));
   const market = {
@@ -73,6 +79,30 @@ async function fetchMarket(variants, locations, qualities, cities, signal) {
     if (!sold) continue;
     const dates = days.map(day => day.timestamp.slice(0, 10)).sort();
     artifactPrices.set(id, { price: Math.round(days.reduce((sum, day) => sum + day.avg_price * day.item_count, 0) / sold), sold, from: dates[0], to: dates.at(-1) });
+  }
+  // Estimates for empty buy/sell cells: volume-weighted average sale price over the last ESTIMATE_DAYS days,
+  // across the ticked cities and qualities.
+  market.estimates = new Map();
+  market.volume = new Map();
+  const cutoff = Date.now() - ESTIMATE_DAYS * 864e5;
+  for (const { id } of variants) {
+    const series = (Array.isArray(itemHistoryData) ? itemHistoryData : []).filter(entry => entry.item_id === id && locations.includes(entry.location) && qualities.includes(Number(entry.quality)));
+    const days = series.flatMap(entry => entry.data.filter(day => day.item_count > 0 && day.avg_price > 0 && new Date(`${day.timestamp}Z`) >= cutoff).map(day => ({ ...day, city: entry.location })));
+    const sold = days.reduce((sum, day) => sum + day.item_count, 0);
+    // Daily sales volume for the Sales column: one entry per UTC day, oldest first, empty days as 0.
+    market.volume.set(id, Array.from({ length: ESTIMATE_DAYS }, (_, back) => {
+      const date = new Date(Date.now() - (ESTIMATE_DAYS - 1 - back) * 864e5).toISOString().slice(0, 10);
+      const today = days.filter(day => day.timestamp.startsWith(date));
+      const count = today.reduce((sum, day) => sum + day.item_count, 0);
+      return { date, sold: count, price: count ? Math.round(today.reduce((sum, day) => sum + day.avg_price * day.item_count, 0) / count) : 0 };
+    }));
+    if (!sold) continue;
+    market.estimates.set(id, {
+      price: Math.round(days.reduce((sum, day) => sum + day.avg_price * day.item_count, 0) / sold),
+      sold,
+      newest: days.map(day => day.timestamp).sort().at(-1),
+      cities: [...new Set(days.map(day => day.city))]
+    });
   }
   return { market, materialPrices, enchantPrices, artifactPrices };
 }
