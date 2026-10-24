@@ -185,10 +185,11 @@ function priceCell(record, side, loading, className = side) {
   if (sources.length) {
     const dots = document.createElement('span');
     dots.className = 'city-dots';
-    dots.title = sources.join(', ');
     dots.append(...sources.map(name => {
       const dot = document.createElement('i');
       dot.style.background = CITY_COLORS[name];
+      dot.dataset.city = name;
+      dot.setAttribute('aria-label', name);
       return dot;
     }));
     value.prepend(dots);
