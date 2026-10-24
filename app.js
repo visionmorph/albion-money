@@ -139,17 +139,28 @@ function returnRate() {
 
 // Merge records for one item across the selected cities/qualities: each side is the average of the
 // prices that exist, dated by the newest observation, with a count of how many prices went in.
+// Each city's primary theme colour, shown as a dot next to prices that came from that city.
+const CITY_COLORS = {
+  'Fort Sterling': '#dbe9f4',
+  Martlock: '#4f86d9',
+  Lymhurst: '#5fb35a',
+  Bridgewatch: '#e3a33b',
+  Thetford: '#7e4fb0',
+  Caerleon: '#3d3d3d',
+  Brecilien: '#3fb5a8'
+};
+
 function averageRecords(records) {
   const merged = new Map();
   for (const record of records) {
     const entry = merged.get(record.item_id) || merged.set(record.item_id, { item_id: record.item_id, buy: [], sell: [] }).get(record.item_id);
-    if (record.buy_price_max > 0) entry.buy.push([record.buy_price_max, record.buy_price_max_date]);
-    if (record.sell_price_min > 0) entry.sell.push([record.sell_price_min, record.sell_price_min_date]);
+    if (record.buy_price_max > 0) entry.buy.push([record.buy_price_max, record.buy_price_max_date, record.city]);
+    if (record.sell_price_min > 0) entry.sell.push([record.sell_price_min, record.sell_price_min_date, record.city]);
   }
-  const side = prices => prices.length ? { price: Math.round(prices.reduce((sum, [price]) => sum + price, 0) / prices.length), date: prices.map(([, date]) => date).sort().at(-1), count: prices.length } : { price: 0, date: null, count: 0 };
+  const side = prices => prices.length ? { price: Math.round(prices.reduce((sum, [price]) => sum + price, 0) / prices.length), date: prices.map(([, date]) => date).sort().at(-1), count: prices.length, cities: [...new Set(prices.map(([, , city]) => city))] } : { price: 0, date: null, count: 0, cities: [] };
   return new Map([...merged.values()].map(({ item_id, buy, sell }) => {
     const b = side(buy), s = side(sell);
-    return [item_id, { item_id, buy_price_max: b.price, buy_price_max_date: b.date, buy_count: b.count, sell_price_min: s.price, sell_price_min_date: s.date, sell_count: s.count }];
+    return [item_id, { item_id, buy_price_max: b.price, buy_price_max_date: b.date, buy_count: b.count, buy_cities: b.cities, sell_price_min: s.price, sell_price_min_date: s.date, sell_count: s.count, sell_cities: s.cities }];
   }));
 }
 let activeRequest;
@@ -169,6 +180,19 @@ function priceCell(record, side, loading, className = side) {
   const value = document.createElement('span');
   value.className = `price${amount > 0 ? '' : ' missing'}`;
   value.textContent = amount > 0 ? formatter.format(amount) : '—';
+  // Buy and sell orders get a dot per city their price came from.
+  const sources = className === side && amount > 0 ? record[`${side}_cities`] || [] : [];
+  if (sources.length) {
+    const dots = document.createElement('span');
+    dots.className = 'city-dots';
+    dots.title = sources.join(', ');
+    dots.append(...sources.map(name => {
+      const dot = document.createElement('i');
+      dot.style.background = CITY_COLORS[name];
+      return dot;
+    }));
+    value.prepend(dots);
+  }
   cell.append(value);
   const age = document.createElement('span');
   age.className = 'age';
