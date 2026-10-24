@@ -83,6 +83,11 @@ const ITEMS = {
   sandalsOfPurity: { name: 'Sandals of purity', group: 'Mage · Cloth sandals', base: 'SHOES_CLOTH_AVALON', recipe: [['cloth', 'CLOTH', 8], ['sanctified bindings', 'ARTEFACT_SHOES_CLOTH_AVALON', 1, true]], enchantCount: ENCHANT_COUNTS.helmetBootCapeOffhand }
 };
 
+// Title case for item and artifact names, keeping short joining words lowercase (e.g. Boots of Valor).
+function titleCase(text) {
+  return text.replace(/\S+/g, (word, index) => index && ['of', 'the', 'and'].includes(word) ? word : word[0].toUpperCase() + word.slice(1));
+}
+
 function buildVariants(item) {
   return Array.from({ length: 25 }, (_, index) => {
     const tier = 4 + Math.floor(index / 5);
@@ -94,7 +99,7 @@ function buildVariants(item) {
       enchantment,
       id: `T${tier}_${item.base}${enchantment ? `@${enchantment}` : ''}`,
       materials: item.recipe.filter(([, , , artifact]) => !artifact).map(([name, id, count]) => ({ name, id: material(id), count })),
-      artifact: item.recipe.filter(([, , , artifact]) => artifact).map(([name, id, count]) => ({ name: name[0].toUpperCase() + name.slice(1), id: `T${tier}_${id}`, count }))[0] || null,
+      artifact: item.recipe.filter(([, , , artifact]) => artifact).map(([name, id, count]) => ({ name: titleCase(name), id: `T${tier}_${id}`, count }))[0] || null,
       enchant: stone ? { name: stone, id: `T${tier}_${stone.toUpperCase()}`, count: item.enchantCount } : null
     };
   });
@@ -298,8 +303,8 @@ document.querySelector('#filters').addEventListener('submit', event => { event.p
 function showItem() {
   const item = ITEMS[currentItem];
   variants = buildVariants(item);
-  document.querySelector('#item-name').textContent = item.name;
-  document.querySelector('.item-art img').src = `https://render.albiononline.com/v1/item/T4_${item.base}.png?quality=1&size=256`;
+  document.querySelector('#item-name').textContent = titleCase(item.name);
+  document.querySelector('.item-art img').src = `https://render.albiononline.com/v1/item/T4_${item.base}.png?quality=1&size=217`;
   document.querySelector('.item-art img').alt = `${item.name} in Albion Online`;
   document.title = `${item.name} prices · Albion market`;
 }
