@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101511">
+  <title>Bag prices · Albion market</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <div class="shell">
+    <main>
+      <div class="search-wrap">
+        <input id="search" class="search" type="search" placeholder="Search items" aria-label="Search items" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-results">
+        <button id="search-clear" class="search-clear" type="button" aria-label="Clear search" hidden><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+        <ul id="search-results" class="search-results" role="listbox" aria-label="Items" hidden></ul>
+      </div>
+      <section class="item-heading" aria-labelledby="item-name">
+        <div class="item-art"><img src="https://render.albiononline.com/v1/item/T4_BAG.png?quality=1&amp;size=256" width="140" height="140" alt="Bag in Albion Online"><span>IV</span></div>
+        <h1 id="item-name">Bag</h1>
+      </section>
+      <div class="table-actions"><button id="refresh" class="icon-button" type="submit" form="filters" aria-label="Refresh" data-tooltip="Refresh"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v5h-5"/></svg></button></div>
+      <section class="market" aria-label="Market prices">
+        <form id="filters" class="sidebar">
+          <div class="return-rate"><span>Resource return rate</span><output id="return-rate" for="focus bonus-day bonus-city">15.3%</output></div>
+          <fieldset class="radio-group"><legend>City</legend><label><input type="radio" name="city" value="Bridgewatch" checked><span>Bridgewatch</span></label><label><input type="radio" name="city" value="Caerleon"><span>Caerleon</span></label><label><input type="radio" name="city" value="Fort Sterling"><span>Fort Sterling</span></label><label><input type="radio" name="city" value="Lymhurst"><span>Lymhurst</span></label><label><input type="radio" name="city" value="Martlock"><span>Martlock</span></label><label><input type="radio" name="city" value="Thetford"><span>Thetford</span></label><label><input type="radio" name="city" value="Brecilien"><span>Brecilien</span></label></fieldset>
+          <fieldset class="radio-group"><legend>Quality</legend><label><input type="radio" name="quality" value="1" checked><span>Normal</span></label><label><input type="radio" name="quality" value="2"><span>Good</span></label><label><input type="radio" name="quality" value="3"><span>Outstanding</span></label><label><input type="radio" name="quality" value="4"><span>Excellent</span></label><label><input type="radio" name="quality" value="5"><span>Masterpiece</span></label></fieldset>
+          <fieldset class="radio-group"><legend>Bonus day</legend><label><input type="radio" name="bonus-day" value="0" checked><span>None</span></label><label><input type="radio" name="bonus-day" value="10"><span>10%</span></label><label><input type="radio" name="bonus-day" value="20"><span>20%</span></label></fieldset>
+          <label class="toggle"><input id="focus" type="checkbox" role="switch"><span>Focus</span></label>
+          <label class="toggle"><input id="bonus-city" type="checkbox" role="switch"><span>Bonus city</span></label>
+          <span id="status" role="status" aria-live="polite"></span>
+        </form>
+        <div class="table-wrap"><table><thead><tr><th scope="col">Tier and enchantment</th><th scope="col">Buy order <span>Highest offer</span></th><th scope="col">Sell order <span>Lowest ask</span></th><th scope="col">Black market <span>Highest offer</span></th><th scope="col">Materials <span>Cost after return</span></th><th scope="col" class="artifact">Artifact <span>Avg. sale price</span></th><th scope="col">Enchanting <span>Royal City average</span></th></tr></thead><tbody id="prices"></tbody></table></div>
+      </section>
+      <aside class="data-note"><span aria-hidden="true">ⓘ</span><p>Prices are collected by players on the Americas server, so some may be out of date or missing. Buy and sell orders are before fees. Materials are priced in the selected city, minus your resource return rate. Artifacts use their recent average sale price, and enchanting uses the Royal City average.</p></aside>
+    </main>
+    <footer><a href="https://www.albion-online-data.com/api/" target="_blank" rel="noopener noreferrer">Powered by Albion Online Data Project ↗</a></footer>
+  </div>
+</body>
+</html>
