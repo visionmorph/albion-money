@@ -152,3 +152,43 @@ searchResults.addEventListener('mousedown', event => {
 [focus, ...bonusDay, bonusCity].forEach(input => input.addEventListener('change', () => render(...lastRender)));
 showItem();
 loadPrices();
+
+// Cell selection, like Google Sheets: click selects a cell, Ctrl/Cmd+click adds or removes cells,
+// and with two or more numeric cells selected a "Sum" tag shows their total. Escape or clicking off the table clears.
+const sumTag = document.querySelector('#sum-tag');
+
+// A cell's number: its main price, or the total sold for Sales cells; null for empty cells.
+function cellValue(cell) {
+  const text = cell.classList.contains('volume') ? cell.querySelector('.age')?.textContent : cell.querySelector('.price')?.textContent;
+  const value = Number((text || '').replace(/[^\d.]/g, ''));
+  return text && /\d/.test(text) ? value : null;
+}
+
+function updateSum() {
+  const values = [...rows.querySelectorAll('td.selected')].map(cellValue).filter(value => value !== null);
+  sumTag.hidden = values.length < 2;
+  sumTag.textContent = `Sum ${formatter.format(values.reduce((sum, value) => sum + value, 0))}`;
+}
+
+function clearSelection() {
+  rows.querySelectorAll('td.selected').forEach(cell => cell.classList.remove('selected'));
+  updateSum();
+}
+
+rows.addEventListener('click', event => {
+  const cell = event.target.closest('td');
+  // The tier column and empty cells have nothing to add up.
+  if (!cell || cell === cell.parentElement.firstElementChild || cellValue(cell) === null) return;
+  if (event.ctrlKey || event.metaKey) {
+    cell.classList.toggle('selected');
+  } else {
+    const only = cell.classList.contains('selected') && rows.querySelectorAll('td.selected').length === 1;
+    clearSelection();
+    if (!only) cell.classList.add('selected');
+  }
+  updateSum();
+});
+document.addEventListener('keydown', event => { if (event.key === 'Escape') clearSelection(); });
+document.addEventListener('pointerdown', event => { if (!event.target.closest('#prices')) clearSelection(); });
+// Re-rendering replaces the cells, so the old selection no longer exists.
+new MutationObserver(updateSum).observe(rows, { childList: true });
